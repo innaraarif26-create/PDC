@@ -1,0 +1,238 @@
+%%writefile vecAdd.cu
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+#include <cuda_runtime.h>
+#include <math.h>
+
+#define WIDTH 512
+#define HEIGHT 128
+#define SIZE (WIDTH * HEIGHT)
+#define BLOCK 16
+
+__global__
+void brightnessMeasureKernel(int * img, int* sum)
+{
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    int idx = y * WIDTH + x;
+
+    if (x < WIDTH && y < HEIGHT)
+        atomicAdd(sum, img[idx]);
+}
+
+// host
+void brightnessCUDA(int* h_img, float* h_brightness)
+{
+    int *d_img, *d_sum;
+
+    int sum = 0;
+
+    cudaMalloc(&d_img, SIZE * sizeof(int));
+    cudaMalloc(&d_sum, sizeof(int));
+
+    cudaMemcpy(d_img, h_img, SIZE * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_sum, &sum, sizeof(int), cudaMemcpyHostToDevice);
+
+    dim3 block(16,16);
+    dim3 grid(WIDTH/16, HEIGHT/16);
+
+    brightnessMeasureKernel<<<grid, block>>>(d_img, d_sum);
+
+    cudaMemcpy(&sum, d_sum, sizeof(int), cudaMemcpyDeviceToHost);
+
+
+    *h_brightness = (float)sum / SIZE;
+
+    cudaFree(d_img);
+    cudaFree(d_sum);
+}
+
+__global__
+void brightnessControl(int* img, int* out, int b)
+{
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (x < WIDTH && y < HEIGHT)
+    {
+        int idx = y * WIDTH + x;
+
+        int val = img[idx] + b;
+
+        if (val > 255) val = 255;
+        if (val < 0) val = 0;
+
+        out[idx] = val;
+    }
+}
+
+// host
+void brightnessControlCUDA(int* h_img, int* h_out, int b)
+{
+    int *d_img, *d_out;
+
+    cudaMalloc(&d_img, SIZE * sizeof(int));
+    cudaMalloc(&d_out, SIZE * sizeof(int));
+
+    cudaMemcpy(d_img, h_img, SIZE * sizeof(int), cudaMemcpyHostToDevice);
+
+    dim3 block(16,16);
+    dim3 grid(WIDTH/16, HEIGHT/16);
+
+    // Kernel call
+    brightnessControl<<<grid, block>>>(d_img, d_out, b);
+
+    cudaMemcpy(h_out, d_out, SIZE * sizeof(int), cudaMemcpyDeviceToHost);
+
+    cudaFree(d_img);
+    cudaFree(d_out);
+}
+
+__global__
+void contrastKernel(int* img, int* maxVal, int* minVal)
+{
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (x < WIDTH && y < HEIGHT)
+    {
+        int idx = y * WIDTH + x;
+
+        atomicMax(maxVal, img[idx]);
+        atomicMin(minVal, img[idx]);
+    }
+}
+
+// host
+
+void contrastCUDA(int* h_img, int* h_contrast)
+{
+    int *d_img, *d_max, *d_min;
+
+    int maxVal = 0;
+    int minVal = 255;
+
+    cudaMalloc(&d_img, SIZE * sizeof(int));
+    cudaMalloc(&d_max, sizeof(int));
+    cudaMalloc(&d_min, sizeof(int));
+
+    cudaMemcpy(d_img, h_img, SIZE * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_max, &maxVal, sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_min, &minVal, sizeof(int), cudaMemcpyHostToDevice);
+
+    dim3 block(16,16);
+    dim3 grid(WIDTH/16, HEIGHT/16);
+
+    contrastKernel<<<grid, block>>>(d_img, d_max, d_min);
+
+    cudaMemcpy(&maxVal, d_max, sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&minVal, d_min, sizeof(int), cudaMemcpyDeviceToHost);
+
+    *h_contrast = maxVal - minVal;
+
+    cudaFree(d_img);
+    cudaFree(d_max);
+    cudaFree(d_min);
+}
+
+__global__
+void dotKernel(int* A, int* B, int* result)
+{
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (x < WIDTH && y < HEIGHT)
+    {
+        int idx = y * WIDTH + x;
+        atomicAdd(result, A[idx] * B[idx]);
+    }
+}
+// host
+void dotCUDA(int* h_A, int* h_B, int* h_dot)
+{
+    int *d_A, *d_B, *d_result;
+
+    int zero = 0;
+
+    cudaMalloc(&d_A, SIZE * sizeof(int));
+    cudaMalloc(&d_B, SIZE * sizeof(int));
+    cudaMalloc(&d_result, sizeof(int));
+
+    cudaMemcpy(d_A, h_A, SIZE * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_B, h_B, SIZE * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_result, &zero, sizeof(int), cudaMemcpyHostToDevice);
+
+    dim3 block(16,16);
+    dim3 grid(WIDTH/16, HEIGHT/16);
+
+    dotKernel<<<grid, block>>>(d_A, d_B, d_result);
+
+    cudaMemcpy(h_dot, d_result, sizeof(int), cudaMemcpyDeviceToHost);
+
+    cudaFree(d_A);
+    cudaFree(d_B);
+    cudaFree(d_result);
+}
+
+int main()
+{
+    int *h_img, *h_out, *h_A, *h_B;
+    float brightness;
+    int contrast, dot;
+
+    int b = 20;
+
+   h_img = (int*)malloc(SIZE * sizeof(int));
+   h_out = (int*)malloc(SIZE * sizeof(int));
+   h_A   = (int*)malloc(SIZE * sizeof(int));
+   h_B   = (int*)malloc(SIZE * sizeof(int));
+
+    srand(time(0));
+
+    // Initialize image (0–255)
+    for(int i = 0; i < SIZE; i++)
+    {
+        h_img[i] = rand() % 256;
+        h_A[i]   = rand() % 256;
+        h_B[i]   = rand() % 256;
+    }
+
+    printf("Image Initialized (128x512)\n");
+
+    // Brightness
+    brightnessCUDA(h_img, &brightness);
+    printf("Brightness (avg intensity): %.2f\n", brightness);
+
+    brightnessControlCUDA(h_img, h_out, b);
+    printf("Brightness Control Done (b = %d)\n", b);
+
+    // Contrast
+    contrastCUDA(h_img, &contrast);
+    printf("Contrast (max-min): %d\n", contrast);
+
+    // Dot Product
+    dotCUDA(h_A, h_B, &dot);
+    printf("Dot Product: %d\n", dot);
+
+ // print image
+
+for(int i = 0; i < HEIGHT; i++)
+{
+    for(int j = 0; j < WIDTH; j++)
+    {
+        printf("%d ", h_img[i * WIDTH + j]);
+    }
+    printf("\n");
+}
+printf("\nBrightness Control Image (sample 10x10 view):\n");
+
+}
+    // Free memory
+    free(h_img);
+    free(h_out);
+    free(h_A);
+    free(h_B);
+
+    return 0;
