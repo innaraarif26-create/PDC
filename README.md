@@ -55,5 +55,5 @@ nvcc filename.cu -o output
 
 This repository is maintained for academic learning and experimentation in Parallel and Distributed Computing (PDC). The implementations are intended to demonstrate CUDA programming concepts and GPU acceleration techniques.
 
-Author
+Author,
 Innara
