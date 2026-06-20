@@ -53,26 +53,7 @@ Compile a CUDA program using:
 
 nvcc filename.cu -o output
 
-Run the executable:
-
-./output
-Repository Structure
-PDC-CUDA/
-│
-├── Vector_Addition/
-├── Matrix_Addition/
-├── Matrix_Multiplication/
-├── Image_Processing/
-├── Reduction/
-├── Dot_Product/
-└── README.md
-Educational Purpose
-
 This repository is maintained for academic learning and experimentation in Parallel and Distributed Computing (PDC). The implementations are intended to demonstrate CUDA programming concepts and GPU acceleration techniques.
 
 Author
-
 Innara
-
-BS Computer Science
-Parallel and Distributed Computing (PDC)
