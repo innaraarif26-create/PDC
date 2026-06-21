@@ -4,12 +4,13 @@
 #include <time.h>
 #include <cuda_runtime.h>
 #include <math.h>
-
+// you can change the height an width accordinng to your situation.
 #define WIDTH 512
 #define HEIGHT 128
 #define SIZE (WIDTH * HEIGHT)
 #define BLOCK 16
 
+// executed on kernal 
 __global__
 void brightnessMeasureKernel(int * img, int* sum)
 {
@@ -22,7 +23,7 @@ void brightnessMeasureKernel(int * img, int* sum)
         atomicAdd(sum, img[idx]);
 }
 
-// host
+// host,executed on cpu
 void brightnessCUDA(int* h_img, float* h_brightness)
 {
     int *d_img, *d_sum;
@@ -44,7 +45,7 @@ void brightnessCUDA(int* h_img, float* h_brightness)
 
 
     *h_brightness = (float)sum / SIZE;
-
+// free the resources for better utilization of memory
     cudaFree(d_img);
     cudaFree(d_sum);
 }
@@ -143,6 +144,7 @@ void dotKernel(int* A, int* B, int* result)
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
 
+// boundary check
     if (x < WIDTH && y < HEIGHT)
     {
         int idx = y * WIDTH + x;
